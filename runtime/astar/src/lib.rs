@@ -88,7 +88,7 @@ pub type AstarAssetLocationIdConverter = AssetLocationIdConverter<AssetId, XcAss
 
 pub type AstarPSP34ClassIdConverter = PSP34ClassIdConverter<MultiLocation,ClassId>;
 
-impl<ClassId: Clone, Multilocation:Clone> Convert<ClassId,Multilocation> for AstarPSP34ClassIdConverter<ClassId,Multilocation> {
+impl<ClassId: Clone, Multilocation:Clone> Convert<ClassId,MultiLocation> for AstarPSP34ClassIdConverter<ClassId,MultiLocation> {
 	
     fn convert(value: MultiLocation) -> Result<ClassId, MultiLocation> {
         match (value.parents, value.interior) {
