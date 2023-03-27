@@ -94,8 +94,23 @@ pub type FungiblesTransactor = FungiblesAdapter<
     CheckingAccount,
 >;
 
+pub type PSP34Transactor = PSP34MutateAdapter<
+    // Use this non-fungibles implementation:
+    Contracts,
+    // Use this currency when it is a non-fungible asset matching the given location or name:
+    ConvertedConcreteAssetId<ClassId, InstanceId, AstarPSP34ClassIdConverter, AstarPSP34InstanceIdConverter>,
+    // Convert an XCM MultiLocation into a local account id:
+    LocationToAccountId,
+    // Our chain's account ID type (we can't get away without mentioning it explicitly):
+    AccountId,
+    // We don't track any teleports of `Assets`.
+    Nothing,
+    // We don't track any teleports of `Assets`.
+    CheckingAccount,
+>;
+
 /// Means for transacting assets on this chain.
-pub type AssetTransactors = (CurrencyTransactor, FungiblesTransactor);
+pub type AssetTransactors = (CurrencyTransactor, FungiblesTransactor,PSP34Transactor);
 
 /// This is the type we use to convert an (incoming) XCM origin into a local `Origin` instance,
 /// ready for dispatching a transaction with Xcm's `Transact`. There is an `OriginKind` which can
