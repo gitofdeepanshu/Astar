@@ -1,120 +1,87 @@
-![astar-cover](https://user-images.githubusercontent.com/40356749/135799652-175e0d24-1255-4c26-87e8-447b192fd4b2.gif)
 
-<div align="center">
+**WARNING** : This repo deos not contain the full implementation but is intended to act as a source of inspiration for anyone who wants to implement the PSP34 complaint smart contracts XCM.
 
-[![Integration Action](https://github.com/AstarNetwork/Astar/workflows/Integration/badge.svg)](https://github.com/AstarNetwork/Astar/actions)
-[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/AstarNetwork/Astar)](https://github.com/AstarNetwork/Astar/tags)
-[![Substrate version](https://img.shields.io/badge/Substrate-3.0.0-brightgreen?logo=Parity%20Substrate)](https://substrate.dev/)
-[![License](https://img.shields.io/github/license/AstarNetwork/Astar?color=green)](https://github.com/AstarNetwork/Astar/blob/production/shiden/LICENSE)
- <br />
-[![Twitter URL](https://img.shields.io/twitter/follow/AstarNetwork?style=social)](https://twitter.com/AstarNetwork)
-[![Twitter URL](https://img.shields.io/twitter/follow/ShidenNetwork?style=social)](https://twitter.com/ShidenNetwork)
-[![YouTube](https://img.shields.io/youtube/channel/subscribers/UC36JgEF6gqatVSK9xlzzrvQ?style=social)](https://www.youtube.com/channel/UC36JgEF6gqatVSK9xlzzrvQ)
-[![Docker](https://img.shields.io/docker/pulls/staketechnologies/astar-collator?logo=docker)](https://hub.docker.com/r/staketechnologies/astar-collator)
-[![Discord](https://img.shields.io/badge/Discord-gray?logo=discord)](https://discord.gg/Z3nC9U4)
-[![Telegram](https://img.shields.io/badge/Telegram-gray?logo=telegram)](https://t.me/PlasmOfficial)
-[![Medium](https://img.shields.io/badge/Medium-gray?logo=medium)](https://medium.com/astar-network)
 
-</div>
+# PSP34 compliant XCM 
 
-Astar Network is an interoperable blockchain based the Substrate framework and the hub for dApps within the Polkadot Ecosystem.
-With Astar Network and Shiden Network, people can stake their tokens to a Smart Contract for rewarding projects that provide value to the network.
+In order to transfer a PSP34 compliant NFT, we have to implement `TransactAsset` trait which deals with how to withdraw and deposit an Asset which in our case is a NFT.
 
-For contributing to this project, please read our [Contribution Guideline](./CONTRIBUTING.md).
+We have implemented a struct `PSP34MutateAdapter` which implements the TransactAsset trait for PSP34complaint smart contracts. 
+```
+pub type PSP34Transactor = PSP34MutateAdapter<
+    // Use this non-fungibles implementation:
+    Contracts,
+    // Use this currency when it is a non-fungible asset matching the given location or name:
+    ConvertedConcreteAssetId<ClassId, InstanceId, AstarPSP34ClassIdConverter, AstarPSP34InstanceIdConverter>,
+    // Convert an XCM MultiLocation into a local account id:
+    LocationToAccountId,
+    // Our chain's account ID type (we can't get away without mentioning it explicitly):
+    AccountId,
+    // We don't track any teleports of `Assets`.
+    Nothing,
+    // We don't track any teleports of `Assets`.
+    CheckingAccount,
+>;
+```
+Trait definition for PSP34MutateAdapter can be found here-> https://github.com/gitofdeepanshu/polkadot/pull/1
 
-## Building From Source
+## Trait Bounds for Pallet Contracts
+Structure of our new Adapter
 
-> This section assumes that the developer is running on either macOS or Debian-variant operating system. For Windows, although there are ways to run it, we recommend using [WSL](https://docs.microsoft.com/en-us/windows/wsl/install-win10) or from a virtual machine for stability.
-
-Execute the following command from your terminal to set up the development environment and build the node runtime.
-
-```bash
-# install Substrate development environment via the automatic script
-$ curl https://getsubstrate.io -sSf | bash -s -- --fast
-
-# clone the Git repository
-$ git clone --recurse-submodules https://github.com/AstarNetwork/Astar.git
-
-# change current working directory
-$ cd Astar
-
-# compile the node
-# note: you may encounter some errors if `wasm32-unknown-unknown` is not installed, or if the toolchain channel is outdated
-$ cargo build --release
-
-# show list of available commands
-$ ./target/release/astar-collator --help
+```
+impl<
+		Assets: nonfungibles::MutatePSP34<AccountId>,
+		Matcher: MatchesNonFungibles<Assets::CollectionId, Assets::ItemId>,
+		AccountIdConverter: Convert<MultiLocation, AccountId>,
+		AccountId: Clone + Eq + From<[u8;32]>, // can't get away without it since Currency is generic over it.
+		CheckAsset: AssetChecking<Assets::CollectionId>,
+		CheckingAccount: Get<Option<AccountId>>,
+	>
+	PSP34MutateAdapter<
+		Assets,
+		Matcher,
+		AccountIdConverter,
+		AccountId,
+		CheckAsset,
+		CheckingAccount,
+	>
 ```
 
-### Building with Nix
+In order to make pallet contracts compatible with our new adapter, we have to implement trait `nonfungibles::MutatePSP34<AccountId>` for pallet_contracts.
+Here is the PR for new trait definitions for pallet_contracts: https://github.com/gitofdeepanshu/substrate/pull/1
 
-```bash
-# install Nix package manager:
-$ curl https://nixos.org/nix/install | sh
+and here is the actual implentation of traits : https://github.com/paritytech/substrate/commit/ab6646e57c8a340d9365833e198f766fefc80ede
 
-# run from root of the project folder (`Astar/` folder)
-$ nix-shell -I nixpkgs=channel:nixos-21.05 third-party/nix/shell.nix --run "cargo build --release"
+### MultiAsset Scheme for PSP34 
+To reference a NFT, we need :
+
+a. Smart Contract Address
+
+b. Item Id for a specific NFTin collection
+
+```
+MultiAsset {
+id: Concrete( MultiLocation { parents: 0, interior: Junctions::X1(AccountId32 {network: None, id: [u8;32] } ) } ),
+fun: Fungibility::NonFungible::Index(u128)
 ```
 
-## Running a Collator Node
+We get smart contract address from `id` and item id from `fun`
 
-To set up a collator node, you must have a fully synced node with the proper arguments, which can be done with the following command.
+## Analysis
 
-```bash
-# start the Shiden collator node with
-$ ./target/release/astar-collator \
-  --base-path <path to save blocks> \
-  --name <node display name> \
-  --port 30333 \
-  --ws-port 9944 \
-  --rpc-port 9933 \
-  --telemetry-url 'wss://telemetry.polkadot.io/submit/ 0' \
-  --rpc-cors all \
-  --collator
-```
+### What are the potential problems with this approach?
 
-Now, you can obtain the node's session key by sending the following RPC payload.
+Problems can be:
+1. No Gas Limit set for XCM call execution.
+2. Pallet contracts require caller_account even when reading data from contract storage which makes traits complex.
+### What are the benefits compared to using `pallet-uniques` in the backend to hold NFTs?
+Benefits:
+1. No need for chain extension (to interact with pallet_uniques) while using this implementation. Also bypass the use of pallet_unique and hence NFT can be teleported to a chain which doesn't implement pallet_uniques.
+2. Smart Contracts are user composable but Runtime is more rigid and would require more resources to edit (considering security implications etc)
+### What would be the next step with this implementation?
+Next steps for the implementation can be found in TODO section.
 
-```bash
-# send `rotate_keys` request
-$ curl -H 'Content-Type: application/json' --data '{ "jsonrpc":"2.0", "method":"author_rotateKeys", "id":1 }' localhost:9933
-
-# should return a long string of hex, which is your session key
-{"jsonrpc":"2.0","result":"<session key in hex>","id":1}
-```
-
-After this step, you should have a validator node online with a session key for your node.
-For key management and validator rewards, consult our [validator guide online](https://docs.astar.network/build/validator-guide/configure-node).
-
-## Run RPC Tests
-
-RPC tests suite can be run for any release. To run tests go to https://github.com/AstarNetwork/Astar/actions/workflows/rpcTest.yml. Click Run workflow, in the dropdown input the release version tag you want to run the test suite. Then click the green Run workflow button to start the test suite. 
-
-![Screenshot from 2022-07-07 15-28-46](https://user-images.githubusercontent.com/874046/177785570-330c6613-237d-4190-bfed-69876209daf6.png)
-
-## Workspace Dependency Handling
-
-All dependencies should be listed inside the workspace's root `Cargo.toml` file.
-This allows us to easily change version of a crate used by the entire repo by modifying the version in a single place.
-
-Right now, if **non_std** is required, `default-features = false` must be set in the root `Cargo.toml` file (related to this [issue](https://github.com/rust-lang/cargo/pull/11409)). Otherwise, it will have no effect, causing your compilation to fail.
-Also `package` imports aren't properly propagated from root to sub-crates, so defining those should be avoided.
-
-Defining _features_ in the root `Cargo.toml` is additive with the features defined in concrete crate's `Cargo.toml`.
-
-**Adding Dependency**
-1. Check if the dependency is already defined in the root `Cargo.toml`
-    1. if **yes**, nothing to do, just take note of the enabled features
-    2. if **no**, add it (make sure to use `default-features = false` if dependency is used in _no_std_ context)
-2. Add `new_dependecy = { workspace = true }` to the required crate
-3. In case dependency is defined with `default-features = false` but you need it in _std_ context, add `features = ["std"]` to the required crate.
- 
-
-## Further Reading
-
-* [Official Documentation](https://docs.astar.network/)
-* [Whitepaper](https://github.com/AstarNetwork/plasmdocs/blob/master/wp/en.pdf)
-* [Whitepaper(JP)](https://github.com/AstarNetwork/plasmdocs/blob/master/wp/jp.pdf)
-* [Subtrate Developer Hub](https://substrate.dev/docs/en/)
-* [Substrate Glossary](https://substrate.dev/docs/en/knowledgebase/getting-started/glossary)
-* [Substrate Client Library Documentation](https://polkadot.js.org/docs/)
+## TODO
+1. Connecting all the pieces together.
+2. Implementing the non-implemented functions.
+3. Writing tests.
