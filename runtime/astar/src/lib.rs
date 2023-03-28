@@ -86,6 +86,50 @@ mod xcm_config;
 
 pub type AstarAssetLocationIdConverter = AssetLocationIdConverter<AssetId, XcAssetConfig>;
 
+pub type AstarPSP34ClassIdConverter = PSP34ClassIdConverter<MultiLocation,ClassId>;
+
+impl<ClassId: Clone, Multilocation:Clone> Convert<ClassId,MultiLocation> for AstarPSP34ClassIdConverter<ClassId,MultiLocation> {
+	
+    fn convert(value: MultiLocation) -> Result<ClassId, MultiLocation> {
+        match (value.parents, value.interior) {
+            (x,Junctions(X1(AccountId32{id: y, ..}))) if x==0 => Ok(y),
+            _ => Err(value)
+        }
+	}
+	fn convert_ref(value: impl Borrow<MultiLocation>) -> Result<ClassId, ()> {
+		Self::convert(value.borrow().clone()).map_err(|_| ())
+	}
+	/// Convert from `value` (of type `B`) into an equivalent value of type `A`, `Err` if not possible.
+	fn reverse(value: ClassId) -> Result<MultiLocation, ClassId> {
+		Ok(Junction::AccountId32{Network:None,id: value}.into_location())
+	}
+	fn reverse_ref(value: impl Borrow<ClassId>) -> Result<MultiLocation, ()> {
+		Self::reverse(value.borrow().clone()).map_err(|_| ())
+	}
+}
+
+pub type AstarPSP34InstanceIdConverter = PSP34InstanceIdConverter<AssetIntance,InstanceId>;
+
+impl<AssetIntance: Clone, InstanceId:Clone>  Convert<AssetIntance,InstanceId> for AstarPSP34ClassIdConverter<AssetIntance,InstanceId> {
+	
+    fn convert(value: AssetInstance) -> Result<InstanceId, AssetInstance> {
+        match value {
+            Index(x) => Ok(x),
+            _ => Err(value)
+        }
+	}
+	fn convert_ref(value: impl Borrow<AssetInstance>) -> Result<InstanceId, ()> {
+		Self::convert(value.borrow().clone()).map_err(|_| ())
+	}
+	/// Convert from `value` (of type `B`) into an equivalent value of type `A`, `Err` if not possible.
+	fn reverse(value: InstanceId) -> Result<AssetInstance, InstanceId> {
+        Ok(AssetInstance::Index(InstanceId))
+	}
+	fn reverse_ref(value: impl Borrow<InstanceId>) -> Result<AssetInstance, ()> {
+		Self::reverse(value.borrow().clone()).map_err(|_| ())
+	}
+}
+
 pub use precompiles::{AstarNetworkPrecompiles, ASSET_PRECOMPILE_ADDRESS_PREFIX};
 pub type Precompiles = AstarNetworkPrecompiles<Runtime, AstarAssetLocationIdConverter>;
 
@@ -544,6 +588,9 @@ impl pallet_balances::Config for Runtime {
 /// [2^64; 2^128-1] Ecosystem assets
 /// 2^128-1         Relay chain token (KSM)
 pub type AssetId = u128;
+
+pub type ClassId = [u8; 32];
+pub type InstanceId = u128;
 
 impl AddressToAssetId<AssetId> for Runtime {
     fn address_to_asset_id(address: H160) -> Option<AssetId> {
